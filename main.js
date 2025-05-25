@@ -1,5 +1,7 @@
 "use strict";
 
+import {Player} from './bin/Player.js';
+
 var perspectiveExample = function(){
 var canvas;
 var gl;
@@ -9,12 +11,7 @@ var numPositions  = 36;
 var positionsArray = [];
 var colorsArray = [];
 
-var playerPos = vec3(0.0, 2.0, -4.0);
-var playerAt = vec3(0.0, 0.0, 0.0);
-var playerUp = vec3(0.0, 1.0, 0.0);
-var playerDir = Math.PI / 2.0;
-var playerVel = 0.0;
-var playerCanJump = true;
+var player = new Player(0.0, 2.0, -4.0);
 
 // keys
 var WPress = false;
@@ -31,57 +28,42 @@ var projectionMatrixLoc;
 
 // map
 var map = {
-    ar1: [],
-    ar2: [],
-    ar3: [],
-    ar4: [],
-    set: function(x, y, val) {
-        var ar;
-        if (x < 0 && y < 0) {
-            ar = this.ar4;
-            x = -x;
-            y = -y;
-        } else if (x >= 0 && y < 0) {
-            ar = this.ar3;
-            y = -y;
-        } else if (x < 0 && y >= 0) {
-            ar = this.ar2;
-            x = -x;
-        } else {
-            ar = this.ar1;
+    grid: [],
+    set: function(x, y, z, val) {
+        if (x < 0 || y < 0 || z < 0) {
+            return;
         }
 
-        if (ar[x] == null) {
-            ar[x] = [];
+        if (this.grid[x] == null) {
+            this.grid[x] = [];
         }
-        ar[x][y] = val;
+        if (this.grid[x][y] == null) {
+            this.grid[x][y] = [];
+        }
+        this.grid[x][y][z] = val;
     },
-    get: function(x, y) {
-        var ar;
-        if (x < 0 && y < 0) {
-            ar = this.ar4;
-            x = -x;
-            y = -y;
-        } else if (x >= 0 && y < 0) {
-            ar = this.ar3;
-            y = -y;
-        } else if (x < 0 && y >= 0) {
-            ar = this.ar2;
-            x = -x;
-        } else {
-            ar = this.ar1;
-        }
-        if (ar[x] == null) {
+    get: function(x, y, z) {
+        if (x < 0 || y < 0 || z < 0
+            || this.grid[x] == null
+            || this.grid[x][y] == null
+            || this.grid[x][y][z] == null) {
             return 0;
         }
-        if (ar[x][y] == null) {
-            return 0;
+        return this.grid[x][y][z]
+    },
+    draw: function(VM, cx, cy, cz, w, h, d) {
+        for (var x = cx; x < cx + w; x++) {
+            for (var y = cy; y < cy + h; y++) {
+                for (var z = cz; z < cz + d; z++) {
+                    var val = this.get(x, y, z)
+                    if (val != null && val != 0) {
+                        cube(VM, x + 0.5, y + 0.5, z + 0.5);
+                    }
+                }
+            }
         }
-        return ar[x][y];
     }
 };
-
-
 
 var vertices = [
     vec4(-0.5, -0.5,  1.5, 1.0),
@@ -115,13 +97,6 @@ var  aspect;       // Viewport aspect ratio
 
 var eye;
 
-function dirVec(theta) { // gets the players direction as a vector
-    var x = Math.cos(playerDir + theta);
-    var z = Math.sin(playerDir + theta);
-
-    return vec3(x, 0.0, z);
-}
-
 function quad(a, b, c, d) {
      positionsArray.push(vertices[a]);
      colorsArray.push(vertexColors[a]);
@@ -148,7 +123,6 @@ function colorCube() {
 }
 
 window.onload = function init() {
-
     canvas = document.getElementById("gl-canvas");
 
     gl = canvas.getContext('webgl2');
@@ -161,6 +135,14 @@ window.onload = function init() {
     gl.clearColor(1.0, 1.0, 1.0, 1.0);
 
     gl.enable(gl.DEPTH_TEST);
+
+    /////////
+    // MAP //
+    /////////
+
+    map.set(0, 0, 0, 1);
+    map.set(1, 0, 0, 1);
+    map.set(3, 0, 0, 1);
 
 
     //
@@ -191,82 +173,21 @@ window.onload = function init() {
     projectionMatrixLoc = gl.getUniformLocation(program, "uProjectionMatrix");
 
     document.addEventListener('keydown', function(event) {
-        if (event.keyCode == 65) {
-            APress = true;
-        } else if (event.keyCode == 68) {
-            DPress = true;
-        } else if (event.keyCode == 87) {
-            WPress = true;
-        } else if (event.keyCode == 83) {
-            SPress = true;
-        } else if (event.keyCode == 37) {
-            LeftPress = true;
-        } else if (event.keyCode == 39) {
-            RightPress = true;
-        } else if (event.keyCode == 32) {
-            SpacePress = true;
-        };
+        player.keyDown(event.keyCode)
     });
     document.addEventListener('keyup', function(event) {
-        if (event.keyCode == 65) {
-            APress = false;
-        } else if (event.keyCode == 68) {
-            DPress = false;
-        } else if (event.keyCode == 87) {
-            WPress = false;
-        } else if (event.keyCode == 83) {
-            SPress = false;
-        } else if (event.keyCode == 37) {
-            LeftPress = false;
-        } else if (event.keyCode == 39) {
-            RightPress = false;
-        } else if (event.keyCode == 32) {
-            SpacePress = false;
-        };
+        player.keyUp(event.keyCode);
     });
 
     render();
 }
 
 function update() {
-    // gravity
-    playerVel -= 0.05;
-    playerPos[1] += playerVel;
-    if (playerPos[1] < 2.0) {
-        playerPos[1] = 2.0;
-        playerVel = 0;
-        playerCanJump = true
-    };
-
-    // handle player input
-    var speed = 0.15
-    var turnSpeed = 0.05
-    if (APress) {
-        playerPos = add(playerPos, mult(speed, dirVec(-Math.PI / 2)));
-    };
-    if (DPress) {
-        playerPos = add(playerPos, mult(speed, dirVec(Math.PI / 2)));
-    };
-    if (WPress) {
-        playerPos = add(playerPos, mult(speed, dirVec(0.0)));
-    };
-    if (SPress) {
-        playerPos = add(playerPos, mult(speed, dirVec(Math.PI)));
-    };
-    if (LeftPress) {
-        playerDir = playerDir - turnSpeed;
-    };
-    if (RightPress) {
-        playerDir = playerDir + turnSpeed;
-    };
-    if (playerCanJump && SpacePress) {
-        playerVel = 0.7;
-        playerCanJump = false;
-    };
+    player.update();
 }
 
-function cube(viewMatrix, pos) {
-    var transMatrix = translate(pos[0], pos[1], pos[2]);
+function cube(viewMatrix, x, y, z) {
+    var transMatrix = translate(x, y, z);
     var modelViewMatrix = mult(viewMatrix, transMatrix);
 
     gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(modelViewMatrix));
@@ -279,12 +200,12 @@ var render = function() {
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    var viewMatrix = lookAt(playerPos, add(playerPos, dirVec(0.0)), playerUp);
+    var viewMatrix = lookAt(player.pos, add(player.pos, player.dirVec(0.0)), player.up);
     var projectionMatrix = perspective(fovy, aspect, near, far);
     
     gl.uniformMatrix4fv(projectionMatrixLoc, false, flatten(projectionMatrix));
 
-    cube(viewMatrix, vec4(1.0, 0.0, 0.0, 1.0));
+    map.draw(viewMatrix, 0, 0, 0, 10, 10, 10);
 
     requestAnimationFrame(render);
 }
