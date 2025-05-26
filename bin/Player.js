@@ -1,10 +1,15 @@
 class Player {
-	constructor(x, y, z) {
+	constructor(map, x, y, z) {
+		this.map = map;
 		this.pos = vec3(x, y, z);
 		this.up = vec3(0.0, 1.0, 0.0);
 		this.dir = Math.PI / 2.0;
 		this.vel = 0.0;
 		this.canJump = true;
+		this.look = this.dirVec(0.0);
+		this.HEIGHT = 1.8;
+		this.WIDTH = 0.4;
+		this.GROUND = 0.0;
 
 		this.controls = {
 			W: false,
@@ -13,7 +18,12 @@ class Player {
 			D: false,
 			RIGHT: false,
 			LEFT: false,
-			SPACE: false
+			SPACE: false,
+		}
+
+		this.mouse = {
+			x: 150/(Math.PI / 2.0),
+			y: 0
 		}
 	}
 	dirVec(theta) { // gets the players direction as a vector
@@ -21,6 +31,9 @@ class Player {
 	    var z = Math.sin(this.dir + theta);
 
 	    return vec3(x, 0.0, z);
+	}
+	eye() {
+		return vec3(this.pos[0], this.pos[1] + this.HEIGHT - 0.5, this.pos[2]);
 	}
 	keyDown(key) {
 		if (key == 65) {
@@ -56,12 +69,176 @@ class Player {
             this.controls.SPACE = false;
         };
 	}
+	handleMouseMovement(move) {
+		this.mouse.x += move.x;
+		this.mouse.y += move.y;
+		this.mouse.y = Math.min(Math.max(this.mouse.y, -(Math.PI/2.0) * 150), (Math.PI/2.0) * 150);
+	}
+	move(d) {
+		// this.pos = add(this.pos, d)
+
+		var mx = this.pos[0];
+		var my = this.pos[1];
+		var mz = this.pos[2];
+
+		// handle x
+		var collision = false;
+		var x = 0;
+		var dx = d[0];
+		var sign = Math.sign(dx);
+		if (Math.abs(dx) > 0) {
+			while ((!collision) && (x*sign < dx*sign)) {
+				x += sign * Math.min(0.5, Math.abs(x - dx));
+				if (this.cLeft(x)) {
+					collision = true;
+
+					this.pos[0] += x;
+					this.pos[0] = Math.floor(this.pos[0]);
+
+					x = 0;
+				}
+				if (this.cRight(x)) {
+					collision = true;
+
+					this.pos[0] += x;
+					this.pos[0] = Math.ceil(this.pos[0]);
+
+					x = 0;
+				}
+			}
+			this.pos[0] += x;
+		}
+
+		// handle z
+		collision = false;
+		var z = 0;
+		var dz = d[2];
+		sign = Math.sign(dz);
+		if (Math.abs(dz) > 0) {
+			while ((!collision) && (z*sign < dz*sign)) {
+				z += sign * Math.min(0.5, Math.abs(z - dz));
+				if (this.cBack(z)) {
+					collision = true;
+
+					this.pos[2] += z - this.WIDTH;
+					this.pos[2] = Math.floor(this.pos[2]) + 0.5 + this.WIDTH;
+
+					z = 0;
+				}
+				if (this.cFront(z)) {
+					collision = true;
+
+					this.pos[2] += z + this.WIDTH;
+					this.pos[2] = Math.ceil(this.pos[2]) - 0.5 - this.WIDTH - 0.001;
+
+					z = 0;
+				}
+			}
+			this.pos[2] += z;
+		}
+
+		// handle y
+		collision = false;
+		var y = 0;
+		var dy = d[1];
+		sign = Math.sign(dy);
+		if (Math.abs(dy) > 0) {
+			while ((!collision) && (y*sign < dy*sign)) {
+				y += sign * Math.min(0.5, Math.abs(y - dy));
+				if (this.cBot(y)) {
+					collision = true;
+
+					this.pos[1] += y;
+					this.pos[1] = Math.ceil(this.pos[1]);
+
+					y = 0;
+
+					this.canJump = true;
+					this.vel = 0.0;
+				}
+				if (this.cTop(y)) {
+					collision = true;
+
+					this.pos[1] += y + this.HEIGHT;
+					this.pos[1] = Math.floor(this.pos[1]) - this.HEIGHT - 0.001;
+
+					y = 0;
+					if (this.vel > 0.0) {
+						this.vel = this.vel / 3;
+					}
+				}
+			}
+			this.pos[1] += y;
+		}
+	}
+	cLeft(x) {
+		var tx = this.pos[0] + this.WIDTH + x;
+		return (
+			   this.map.test(tx, this.pos[1], this.pos[2] + this.WIDTH)
+			|| this.map.test(tx, this.pos[1], this.pos[2] - this.WIDTH)
+			|| this.map.test(tx, this.pos[1] + this.HEIGHT / 2, this.pos[2] + this.WIDTH)
+			|| this.map.test(tx, this.pos[1] + this.HEIGHT / 2, this.pos[2] - this.WIDTH)
+			|| this.map.test(tx, this.pos[1] + this.HEIGHT, this.pos[2] + this.WIDTH)
+			|| this.map.test(tx, this.pos[1] + this.HEIGHT, this.pos[2] - this.WIDTH)
+			);
+	}
+	cRight(x) {
+		var tx = this.pos[0] - this.WIDTH + x;
+		return (
+			   this.map.test(tx, this.pos[1], this.pos[2] + this.WIDTH)
+			|| this.map.test(tx, this.pos[1], this.pos[2] - this.WIDTH)
+			|| this.map.test(tx, this.pos[1] + this.HEIGHT / 2, this.pos[2] + this.WIDTH)
+			|| this.map.test(tx, this.pos[1] + this.HEIGHT / 2, this.pos[2] - this.WIDTH)
+			|| this.map.test(tx, this.pos[1] + this.HEIGHT, this.pos[2] + this.WIDTH)
+			|| this.map.test(tx, this.pos[1] + this.HEIGHT, this.pos[2] - this.WIDTH)
+			);
+	}
+	cBack(z) {
+		var tz = this.pos[2] - this.WIDTH + z;
+		return (
+			   this.map.test(this.pos[0] + this.WIDTH, this.pos[1], tz)
+			|| this.map.test(this.pos[0] - this.WIDTH, this.pos[1], tz)
+			|| this.map.test(this.pos[0] + this.WIDTH, this.pos[1] + this.HEIGHT / 2.0, tz)
+			|| this.map.test(this.pos[0] - this.WIDTH, this.pos[1] + this.HEIGHT / 2.0, tz)
+			|| this.map.test(this.pos[0] + this.WIDTH, this.pos[1] + this.HEIGHT, tz)
+			|| this.map.test(this.pos[0] - this.WIDTH, this.pos[1] + this.HEIGHT, tz)
+			)
+	}
+	cFront(z) {
+		var tz = this.pos[2] + this.WIDTH + z;
+		return (
+			   this.map.test(this.pos[0] + this.WIDTH, this.pos[1], tz)
+			|| this.map.test(this.pos[0] - this.WIDTH, this.pos[1], tz)
+			|| this.map.test(this.pos[0] + this.WIDTH, this.pos[1] + this.HEIGHT / 2.0, tz)
+			|| this.map.test(this.pos[0] - this.WIDTH, this.pos[1] + this.HEIGHT / 2.0, tz)
+			|| this.map.test(this.pos[0] + this.WIDTH, this.pos[1] + this.HEIGHT, tz)
+			|| this.map.test(this.pos[0] - this.WIDTH, this.pos[1] + this.HEIGHT, tz)
+			)
+	}
+	cBot(y) {
+		var ty = this.pos[1] + y;
+		return (
+			   this.map.test(this.pos[0] - this.WIDTH, ty, this.pos[2] - this.WIDTH)
+			|| this.map.test(this.pos[0] + this.WIDTH, ty, this.pos[2] + this.WIDTH)
+			|| this.map.test(this.pos[0] + this.WIDTH, ty, this.pos[2] - this.WIDTH)
+			|| this.map.test(this.pos[0] - this.WIDTH, ty, this.pos[2] + this.WIDTH)
+			)
+	}
+	cTop(y) {
+		var ty = this.pos[1] + this.HEIGHT + y;
+		return (
+			   this.map.test(this.pos[0] - this.WIDTH, ty, this.pos[2] - this.WIDTH)
+			|| this.map.test(this.pos[0] + this.WIDTH, ty, this.pos[2] + this.WIDTH)
+			|| this.map.test(this.pos[0] + this.WIDTH, ty, this.pos[2] - this.WIDTH)
+			|| this.map.test(this.pos[0] - this.WIDTH, ty, this.pos[2] + this.WIDTH)
+			)
+	}
 	update() {
 		// gravity
         this.vel -= 0.05;
-        this.pos[1] += this.vel;
-        if (this.pos[1] < 2.0) {
-            this.pos[1] = 2.0;
+        this.move(vec3(0.0, this.vel, 0.0))
+        if (this.pos[1] < this.GROUND) {
+            this.pos[1] = this.GROUND;
             this.vel = 0;
             this.canJump = true
         };
@@ -70,27 +247,34 @@ class Player {
         var speed = 0.15
         var turnSpeed = 0.05
         if (this.controls.A) {
-            this.pos = add(this.pos, mult(speed, this.dirVec(-Math.PI / 2)));
+            this.move( mult(speed, this.dirVec(-Math.PI / 2)) );
         }
         if (this.controls.D) {
-            this.pos = add(this.pos, mult(speed, this.dirVec(Math.PI / 2)));
+            this.move(mult(speed, this.dirVec(Math.PI / 2)));
         }
         if (this.controls.W) {
-            this.pos = add(this.pos, mult(speed, this.dirVec(0.0)));
+            this.move(mult(speed, this.dirVec(0.0)));
         }
         if (this.controls.S) {
-            this.pos = add(this.pos, mult(speed, this.dirVec(Math.PI)));
-        }
-        if (this.controls.LEFT) {
-            this.dir = this.dir - turnSpeed;
-        }
-        if (this.controls.RIGHT) {
-            this.dir = this.dir + turnSpeed;
+            this.move(mult(speed, this.dirVec(Math.PI)));
         }
         if (this.canJump && this.controls.SPACE) {
             this.vel = 0.7;
-            this.canJump = false;
         }
+
+        this.canJump = false;
+
+        console.log(this.pos[0]);
+
+        // handle mouse movement
+        this.dir = this.mouse.x / 150;
+        var pitch = -this.mouse.y / 150;
+
+        var xz = this.dirVec(0.0);
+        var c = Math.cos(pitch);
+        this.look = normalize(vec3(xz[0] * c, Math.sin(pitch), xz[2] * c));
+        var right = normalize(cross(vec3(0.0, 1.0, 0.0), this.look));
+        this.up = normalize(cross(this.look, right));
 	}
 }
 

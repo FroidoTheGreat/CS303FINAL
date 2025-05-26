@@ -1,5 +1,7 @@
 "use strict";
 
+import {draw} from './bin/draw.js';
+import {Map} from './bin/Map.js';
 import {Player} from './bin/Player.js';
 
 var perspectiveExample = function(){
@@ -8,62 +10,41 @@ var gl;
 
 var numPositions  = 36;
 
+var program;
+var flag = true;
 var positionsArray = [];
 var colorsArray = [];
+var texCoordsArray = [];
 
-var player = new Player(0.0, 2.0, -4.0);
+var texture;
 
-// keys
-var WPress = false;
-var APress = false;
-var SPress = false;
-var DPress = false;
-var LeftPress = false;
-var RightPress = false;
-var SpacePress = false;
+var texCoord = [
+    vec2(0, 0),
+    vec2(0, 1),
+    vec2(1, 1),
+    vec2(1, 0)
+];
+
+function configureTexture( image ) {
+    texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB,
+         gl.RGB, gl.UNSIGNED_BYTE, image);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER,
+                      gl.NEAREST_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+    gl.uniform1i(gl.getUniformLocation(program, "uTexMap"), 0);
+}
 
 // uniform locs
 var modelViewMatrixLoc;
 var projectionMatrixLoc;
 
-// map
-var map = {
-    grid: [],
-    set: function(x, y, z, val) {
-        if (x < 0 || y < 0 || z < 0) {
-            return;
-        }
-
-        if (this.grid[x] == null) {
-            this.grid[x] = [];
-        }
-        if (this.grid[x][y] == null) {
-            this.grid[x][y] = [];
-        }
-        this.grid[x][y][z] = val;
-    },
-    get: function(x, y, z) {
-        if (x < 0 || y < 0 || z < 0
-            || this.grid[x] == null
-            || this.grid[x][y] == null
-            || this.grid[x][y][z] == null) {
-            return 0;
-        }
-        return this.grid[x][y][z]
-    },
-    draw: function(VM, cx, cy, cz, w, h, d) {
-        for (var x = cx; x < cx + w; x++) {
-            for (var y = cy; y < cy + h; y++) {
-                for (var z = cz; z < cz + d; z++) {
-                    var val = this.get(x, y, z)
-                    if (val != null && val != 0) {
-                        cube(VM, x + 0.5, y + 0.5, z + 0.5);
-                    }
-                }
-            }
-        }
-    }
-};
+// game
+var player;
+var map;
 
 var vertices = [
     vec4(-0.5, -0.5,  1.5, 1.0),
@@ -88,11 +69,11 @@ var vertexColors = [
 ];
 
 
-var near = 0.3;
+var near = 0.2;
 var far = 30.0;
 var radius = 4.0;
 
-var  fovy = 80.0;  // Field-of-view in Y direction angle (in degrees)
+var  fovy = 100.0;  // Field-of-view in Y direction angle (in degrees)
 var  aspect;       // Viewport aspect ratio
 
 var eye;
@@ -100,16 +81,27 @@ var eye;
 function quad(a, b, c, d) {
      positionsArray.push(vertices[a]);
      colorsArray.push(vertexColors[a]);
+     texCoordsArray.push(texCoord[0]);
+
      positionsArray.push(vertices[b]);
      colorsArray.push(vertexColors[a]);
+     texCoordsArray.push(texCoord[1]);
+
      positionsArray.push(vertices[c]);
      colorsArray.push(vertexColors[a]);
+     texCoordsArray.push(texCoord[2]);
+
      positionsArray.push(vertices[a]);
      colorsArray.push(vertexColors[a]);
+     texCoordsArray.push(texCoord[0]);
+
      positionsArray.push(vertices[c]);
      colorsArray.push(vertexColors[a]);
+     texCoordsArray.push(texCoord[2]);
+
      positionsArray.push(vertices[d]);
      colorsArray.push(vertexColors[a]);
+     texCoordsArray.push(texCoord[3]);
 }
 
 
@@ -132,23 +124,48 @@ window.onload = function init() {
 
     aspect =  canvas.width/canvas.height;
 
-    gl.clearColor(1.0, 1.0, 1.0, 1.0);
+    gl.clearColor(0.984313725490196, 0.803921568627451, 0.803921568627451, 1.0);
 
     gl.enable(gl.DEPTH_TEST);
+
+    ///////////
+    // MOUSE //
+    ///////////
+
+    canvas.addEventListener("click", async () => {
+        await canvas.requestPointerLock({
+            unadjustedMovement: true,
+        });
+    })
 
     /////////
     // MAP //
     /////////
 
+    map = new Map();
+
     map.set(0, 0, 0, 1);
+    map.set(0, 0, 2, 1);
     map.set(1, 0, 0, 1);
     map.set(3, 0, 0, 1);
+    map.set(3, 1, 1, 1);
+    map.set(3, 0, 1, 1);
+    map.set(3, 2, 2, 1);
+    map.set(3, 1, 2, 1);
+    map.set(3, 0, 2, 1);
+    map.set(6, 2, 2, 1);
+    map.set(7, 1, 2, 1);
 
+    ////////////
+    // PLAYER //
+    ////////////
+
+    player = new Player(map, 0.0, 2.0, -4.0);
 
     //
     //  Load shaders and initialize attribute buffers
     //
-    var program = initShaders(gl, "vertex-shader", "fragment-shader");
+    program = initShaders(gl, "vertex-shader", "fragment-shader");
     gl.useProgram(program);
 
     colorCube();
@@ -169,15 +186,42 @@ window.onload = function init() {
     gl.vertexAttribPointer(positionLoc, 4, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(positionLoc);
 
+    var tBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, tBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, flatten(texCoordsArray), gl.STATIC_DRAW);
+
+    var texCoordLoc = gl.getAttribLocation(program, "aTexCoord");
+    gl.vertexAttribPointer(texCoordLoc, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(texCoordLoc);
+
     modelViewMatrixLoc = gl.getUniformLocation(program, "uModelViewMatrix");
     projectionMatrixLoc = gl.getUniformLocation(program, "uProjectionMatrix");
 
+    // image stuff
+    var image = document.getElementById("boxImage");
+
+    configureTexture(image);
+
+    // handle events
     document.addEventListener('keydown', function(event) {
+        if (document.pointerLockElement !== canvas) {return;}
         player.keyDown(event.keyCode)
     });
     document.addEventListener('keyup', function(event) {
+        if (document.pointerLockElement !== canvas) {return;}
         player.keyUp(event.keyCode);
     });
+    
+    draw.init(gl, modelViewMatrixLoc);
+    document.addEventListener('mousemove', function(event) {
+        if (document.pointerLockElement !== canvas) {return;}
+        var move = {
+            x: event.movementX,
+            y: event.movementY
+        };
+
+        player.handleMouseMovement(move);
+    })
 
     render();
 }
@@ -186,21 +230,14 @@ function update() {
     player.update();
 }
 
-function cube(viewMatrix, x, y, z) {
-    var transMatrix = translate(x, y, z);
-    var modelViewMatrix = mult(viewMatrix, transMatrix);
-
-    gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(modelViewMatrix));
-
-    gl.drawArrays(gl.TRIANGLES, 0, 36);
-}
-
 var render = function() {
     update();
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    var viewMatrix = lookAt(player.pos, add(player.pos, player.dirVec(0.0)), player.up);
+    let up = vec3(player.up[0], player.up[1], player.up[2]);
+    var viewMatrix = lookAt(player.eye(), add(player.eye(), player.look), up);
+    
     var projectionMatrix = perspective(fovy, aspect, near, far);
     
     gl.uniformMatrix4fv(projectionMatrixLoc, false, flatten(projectionMatrix));
