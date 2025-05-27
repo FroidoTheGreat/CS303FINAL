@@ -272,17 +272,22 @@ class Player {
         // handle player input
         var speed = 0.15
         var turnSpeed = 0.05
-        if (this.controls.A) {
-            this.move( mult(speed, this.dirVec(-Math.PI / 2)) );
-        }
-        if (this.controls.D) {
-            this.move(mult(speed, this.dirVec(Math.PI / 2)));
-        }
-        if (this.controls.W) {
-            this.move(mult(speed, this.dirVec(0.0)));
-        }
-        if (this.controls.S) {
-            this.move(mult(speed, this.dirVec(Math.PI)));
+        if (this.controls.A && this.controls.W) {
+            this.move( mult(speed, this.dirVec(-Math.PI / 4)) );
+        } else if (this.controls.D && this.controls.W) {
+            this.move(mult(speed, this.dirVec(Math.PI / 4)));
+        } else if (this.controls.A && this.controls.S) {
+            this.move(mult(speed, this.dirVec(-3 * Math.PI / 4)));
+        } else if (this.controls.D && this.controls.S) {
+            this.move(mult(speed, this.dirVec(3 * Math.PI / 4)));
+        } else if (this.controls.W) {
+            this.move(mult(speed, this.dirVec(0.0)) );
+        } else if (this.controls.A) {
+            this.move(mult(speed, this.dirVec(-Math.PI / 2)) );
+        } else if (this.controls.S) {
+            this.move(mult(speed, this.dirVec(Math.PI)) );
+        } else if (this.controls.D) {
+            this.move(mult(speed, this.dirVec(Math.PI / 2)) );
         }
         if (this.canJump > 0 && this.controls.SPACE) {
             this.vel = 0.3;
