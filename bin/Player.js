@@ -5,11 +5,12 @@ class Player {
 		this.up = vec3(0.0, 1.0, 0.0);
 		this.dir = Math.PI / 2.0;
 		this.vel = 0.0;
-		this.canJump = true;
+		this.canJump = 0;
 		this.look = this.dirVec(0.0);
 		this.HEIGHT = 1.8;
 		this.WIDTH = 0.4;
-		this.GROUND = 0.0;
+		this.GROUND = -70.0;
+		this.jumpTime = 5;
 
 		this.controls = {
 			W: false,
@@ -22,9 +23,11 @@ class Player {
 		}
 
 		this.mouse = {
-			x: 150/(Math.PI / 2.0),
+			x: 240,
 			y: 0
 		}
+
+		this.spawn = vec3(x, y, z);
 	}
 	dirVec(theta) { // gets the players direction as a vector
 	    var x = Math.cos(this.dir + theta);
@@ -153,7 +156,7 @@ class Player {
 
 					y = 0;
 
-					this.canJump = true;
+					this.canJump = this.jumpTime;
 					this.vel = 0.0;
 				}
 				if (this.cTop(y)) {
@@ -169,6 +172,28 @@ class Player {
 				}
 			}
 			this.pos[1] += y;
+		}
+	}
+	step() {
+		var cx = this.pos[0];
+        var cy = this.pos[1] - 0.01;
+        var cz = this.pos[2];
+        
+		var tl = this.map.fget(cx - this.WIDTH, cy, cz - this.WIDTH);
+		var br = this.map.fget(cx + this.WIDTH, cy, cz + this.WIDTH);
+		var tr = this.map.fget(cx + this.WIDTH, cy, cz - this.WIDTH);
+		var bl = this.map.fget(cx - this.WIDTH, cy, cz + this.WIDTH);
+		if (tl.isBlock && tl.flags.solid) {
+			tl.playerStep(this);
+		}
+		if (br.isBlock && br.flags.solid && br !== tl) {
+			br.playerStep(this);
+		}
+		if (tr.isBlock && tr.flags.solid && tr !== tl && tr !== br) {
+			tr.playerStep(this);
+		}
+		if (bl.isBlock && bl.flags.solid && bl !== tl && bl !== br && bl !== tr) {
+			bl.playerStep(this);
 		}
 	}
 	cLeft(x) {
@@ -235,12 +260,13 @@ class Player {
 	}
 	update() {
 		// gravity
-        this.vel -= 0.05;
+        this.vel -= 0.025;
         this.move(vec3(0.0, this.vel, 0.0))
         if (this.pos[1] < this.GROUND) {
-            this.pos[1] = this.GROUND;
-            this.vel = 0;
-            this.canJump = true
+            this.pos = vec3(this.spawn[0],
+            	this.spawn[1],
+            	this.spawn[2]);
+            this.map.reset(0, 0, 0, 100, 100, 100);
         };
 
         // handle player input
@@ -258,13 +284,14 @@ class Player {
         if (this.controls.S) {
             this.move(mult(speed, this.dirVec(Math.PI)));
         }
-        if (this.canJump && this.controls.SPACE) {
-            this.vel = 0.7;
+        if (this.canJump > 0 && this.controls.SPACE) {
+            this.vel = 0.3;
+            this.canJump = 0
         }
 
-        this.canJump = false;
+        this.step();
 
-        console.log(this.pos[0]);
+        this.canJump --;
 
         // handle mouse movement
         this.dir = this.mouse.x / 150;

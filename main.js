@@ -3,6 +3,10 @@
 import {draw} from './bin/draw.js';
 import {Map} from './bin/Map.js';
 import {Player} from './bin/Player.js';
+import {Block} from './bin/Block.js';
+import {Tile} from './bin/Tile.js';
+import {Sand} from './bin/Sand.js';
+import {Spawn} from './bin/Spawn.js';
 
 var perspectiveExample = function(){
 var canvas;
@@ -24,19 +28,6 @@ var texCoord = [
     vec2(1, 1),
     vec2(1, 0)
 ];
-
-function configureTexture( image ) {
-    texture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB,
-         gl.RGB, gl.UNSIGNED_BYTE, image);
-    gl.generateMipmap(gl.TEXTURE_2D);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER,
-                      gl.NEAREST_MIPMAP_LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-
-    gl.uniform1i(gl.getUniformLocation(program, "uTexMap"), 0);
-}
 
 // uniform locs
 var modelViewMatrixLoc;
@@ -114,15 +105,24 @@ function colorCube() {
     quad(5, 4, 0, 1);
 }
 
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    gl.viewport(0, 0, canvas.width, canvas.height);
+
+    aspect =  canvas.width/canvas.height;
+}
+
 window.onload = function init() {
     canvas = document.getElementById("gl-canvas");
 
     gl = canvas.getContext('webgl2');
     if (!gl) alert("WebGL 2.0 isn't available" );
 
-    gl.viewport(0, 0, canvas.width, canvas.height);
+    resize();
 
-    aspect =  canvas.width/canvas.height;
+    window.addEventListener("resize", resize);
 
     gl.clearColor(0.984313725490196, 0.803921568627451, 0.803921568627451, 1.0);
 
@@ -133,9 +133,13 @@ window.onload = function init() {
     ///////////
 
     canvas.addEventListener("click", async () => {
-        await canvas.requestPointerLock({
-            unadjustedMovement: true,
-        });
+        try {
+            await canvas.requestPointerLock({
+                unadjustedMovement: true,
+            });
+        } catch (error) {
+            // I don't care
+        }
     })
 
     /////////
@@ -144,23 +148,61 @@ window.onload = function init() {
 
     map = new Map();
 
-    map.set(0, 0, 0, 1);
-    map.set(0, 0, 2, 1);
-    map.set(1, 0, 0, 1);
-    map.set(3, 0, 0, 1);
-    map.set(3, 1, 1, 1);
-    map.set(3, 0, 1, 1);
-    map.set(3, 2, 2, 1);
-    map.set(3, 1, 2, 1);
-    map.set(3, 0, 2, 1);
-    map.set(6, 2, 2, 1);
-    map.set(7, 1, 2, 1);
+    for (var x = 27; x <= 33; x++) {
+        for (var z = 27; z <= 33; z++) {
+            let ceiling = 12;
+            map.set(x, 5, z, new Tile());
+            map.set(x, ceiling, z, new Tile());
+            if ((x == 27 && z == 27)
+                || (z == 33 && x == 33)
+                || (z == 27 && x == 33)
+                || (z == 33 && x == 27)) {
+                for (var y = 6; y < ceiling; y++) {
+                    map.set(x, y, z, new Tile());
+                }
+            }
+        }
+    }
+
+    map.set(30, 5, 30, new Spawn());
+
+    map.set(30, 6, 35, new Tile());
+    for (var z = 36; z < 42; z++) {
+        map.set(30, 6, z, new Sand());
+    }
+    map.set(30, 6, 42, new Spawn());
+    for (var x = 31; x < 38; x++) {
+        map.set(x, 6, 42, new Sand());
+    }
+    for (var z = 36; z < 43; z++) {
+        map.set(38, 6, z, new Sand());
+    }
+
+    map.set(38, 6, 33, new Spawn());
+
+    for (var i = 1; i <= 6; i ++) {
+        map.set(38 + i * 2, 6 + i, 33, new Sand());
+    }
+    for (var i = 1; i <= 6; i ++) {
+        map.set(50, 12 + i, 33 + i * 2, new Sand());
+    }
+
+    map.set(50, 6, 45, new Spawn());
+    map.set(53, 7, 48, new Tile());
+    map.set(57, 7, 48, new Tile());
+    map.set(60, 7, 48, new Sand());
+    map.set(60, 7, 51, new Sand());
+    map.set(64, 8, 53, new Sand());
+    map.set(68, 9, 53, new Sand());
+    map.set(68, 4, 57, new Sand());
+    map.set(70, 4, 60, new Spawn());
+
 
     ////////////
     // PLAYER //
     ////////////
 
-    player = new Player(map, 0.0, 2.0, -4.0);
+    player = new Player(map, 30.0, 6.0, 30.0);
 
     //
     //  Load shaders and initialize attribute buffers
@@ -197,11 +239,6 @@ window.onload = function init() {
     modelViewMatrixLoc = gl.getUniformLocation(program, "uModelViewMatrix");
     projectionMatrixLoc = gl.getUniformLocation(program, "uProjectionMatrix");
 
-    // image stuff
-    var image = document.getElementById("boxImage");
-
-    configureTexture(image);
-
     // handle events
     document.addEventListener('keydown', function(event) {
         if (document.pointerLockElement !== canvas) {return;}
@@ -211,8 +248,7 @@ window.onload = function init() {
         if (document.pointerLockElement !== canvas) {return;}
         player.keyUp(event.keyCode);
     });
-    
-    draw.init(gl, modelViewMatrixLoc);
+
     document.addEventListener('mousemove', function(event) {
         if (document.pointerLockElement !== canvas) {return;}
         var move = {
@@ -222,12 +258,19 @@ window.onload = function init() {
 
         player.handleMouseMovement(move);
     })
+    
+    draw.init(gl, program, modelViewMatrixLoc);
+
+    // image stuff
+    draw.setTexture(draw.tex);
 
     render();
 }
 
 function update() {
     player.update();
+
+    map.update(0, 0, 0, 100, 100, 100);
 }
 
 var render = function() {
@@ -242,7 +285,7 @@ var render = function() {
     
     gl.uniformMatrix4fv(projectionMatrixLoc, false, flatten(projectionMatrix));
 
-    map.draw(viewMatrix, 0, 0, 0, 10, 10, 10);
+    map.draw(viewMatrix, 0, 0, 0, 100, 100, 100);
 
     requestAnimationFrame(render);
 }
