@@ -88,7 +88,7 @@ const draw = {
 		return new Promise(r => {
 			let i = new Image();
 			i.onload = (() => r(i));
-			i.src = '../sprites/'+name+'.png';
+			i.src = 'sprites/'+name+'.png';
 		})
 	}
 }
